@@ -4,8 +4,22 @@ const url = require('url');
 const parse5 = require('parse5');
 const planJS = require('./js.js');
 const planCSS = require('./css.js');
+const validateUrl = require('../util.js').validateUrl;
+const refSpace = require('../util.js').refSpace;
+//
+// css:
+//   interleaves immediately - https://jakearchibald.com/2016/link-in-body/
+//   circular deps are not re-entrant
+// js:
+//   src - interleaves immediately
+//   defer src - interleaves at end of body
+//   defer async src - interleaves after `defer src`
+//   async src - interleaves after `defer async src`
+//   circular deps are not re-entrant
+//
+// todo:
+//   hooks for: iframe, img
 
-// html -> directive[]
 module.exports = function planHTML(originalPlan, supplier) {
   const ret = mississippi.through.obj();
   let plan = originalPlan;
@@ -13,27 +27,24 @@ module.exports = function planHTML(originalPlan, supplier) {
   let scriptPrevPlan = null;
   let lastBody = null;
   let lastHTML = null;
-  let trailer = originalPlan.split();
+  let trailer_defer = originalPlan.split();
+  let trailer_defer_async = originalPlan.split();
+  let trailer_async = originalPlan.split();
   const concat = mississippi.concat((body) => {
     const parser = new parse5.SAXParser({
       locationInfo: true
     });
     
     let index = 0;
-    let refs = 0;
-    function ref(stream, msg) {
-      refs++;
-      stream.once('end', () => {
-        refs--;
-        if (refs === 0) {
-          writeUntil(body.length);
-          ;(lastBody || lastHTML || originalPlan).join(trailer);
-          ret.end(originalPlan);
-        }
-      });
-      return stream;
-    }
-    ref(parser);
+    let refs = refSpace(() => {
+      writeUntil(body.length);
+      ;(lastBody || lastHTML || originalPlan)
+        .join(trailer_defer)
+        .join(trailer_defer_async)
+        .join(trailer_async);
+      ret.end(originalPlan);
+    })
+    const parserUnref = refs.ref(parser);
     
     function writeUntil(offset) {
       plan.write(body.slice(index, offset));
@@ -55,26 +66,25 @@ module.exports = function planHTML(originalPlan, supplier) {
         scriptPrevPlan = plan;
         if (typeof src === 'string') {
           let basePlan = plan;
-          if (defer) {
-            if (async) basePlan = trailer.defer().async();
-            else basePlan = trailer.defer();
+          if (src.length === 0) {
+            throw Error(`Cannot handle an empty src attribute, aborting`);
           }
-          else if (async) basePlan = trailer.async();
+          if (defer) {
+            if (async) basePlan = trailer_defer_async;
+            else basePlan = trailer_defer;
+          }
+          else if (async) basePlan = trailer_async;
           writeUntil(location.startOffset);
           plan = basePlan;
           writeUntil(location.endOffset);
-          let skipInterleave = false;
-          if (src.slice(0,2) === '//') skipInterleave = true;
-          if (/^(?:\/|\.\.?(?:\/|$))/.test(src) !== true) {
-            const target = url.parse(src);
-            // skip remote calls
-            if (target.protocol) skipInterleave = true;
-            else src = (/\/$/.test(plan.currentUrl) ? './' : '../') + src;
-          }
-          if (!skipInterleave) {
+          const url = validateUrl(plan, src);
+          if (url !== null) {
             scriptPlan = basePlan.fork(src);
             //scriptPlan.write(`\n\nINTERLEAVE ${src}\n\n`);
-            const jsPlanner = ref(planJS(scriptPlan, supplier)).resume();
+            const jsPlanner = planJS(scriptPlan, supplier);
+            const jsUnref = refs.ref();
+            jsPlanner.on('end', jsUnref);
+            jsPlanner.resume();
             supplier.createReadStream(scriptPlan).pipe(jsPlanner);
           }
         }
@@ -93,7 +103,10 @@ module.exports = function planHTML(originalPlan, supplier) {
           writeUntil(location.endOffset);
           const linkPlan = plan.fork(href);
           //linkPlan.write(`\n\nINTERLEAVE ${href}\n\n`);
-          const cssPlanner = ref(planCSS(linkPlan, supplier)).resume();
+          const cssPlanner = planCSS(linkPlan, supplier);
+          const cssUnref = refs.ref();
+          cssPlanner.on('end', cssUnref);
+          cssPlanner.resume();
           supplier.createReadStream(linkPlan).pipe(cssPlanner);
         }
       }
@@ -112,6 +125,10 @@ module.exports = function planHTML(originalPlan, supplier) {
         plan = scriptPrevPlan;
         scriptPlan = null;
       }
+    });
+    parser.on('end', () => {
+      parserUnref();
+      refs.close();
     });
     parser.end(body);
   });

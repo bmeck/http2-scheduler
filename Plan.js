@@ -1,18 +1,16 @@
 "use strict";
-const path = require('path');
+const path = require('path').posix;
 exports.Plan = class Plan {
   constructor(
     parent,
     baseUrl,
     currentUrl
   ) {
-    this.parent = parent;
+    this.parent = parent || null;
     this.baseUrl = baseUrl;
     this.currentUrl = currentUrl;
     
     this.steps = [];
-    this._defer = null;
-    this._async = null;
   }
   split() {
     const plan = new Plan(this, this.baseUrl, this.currentUrl);
@@ -23,11 +21,27 @@ exports.Plan = class Plan {
       type: 'Fork',
       plan: other 
     });
+    return this;
   }
+  // returns null if this would cause circular dep
   fork(newUrl) {
-    const url = newUrl === undefined ?
-      this.currentUrl :
-      path.resolve(this.baseUrl, path.join('./', path.resolve(this.currentUrl, newUrl)));
+    let url;
+    if (newUrl === undefined) {
+      url = this.currentUrl;
+    }
+    else {
+      const dir = this.currentUrl.slice(-1) === '/' ?
+        this.currentUrl :
+        path.dirname(this.currentUrl);
+      url = path.resolve(this.baseUrl, dir, newUrl);
+    }
+    let needle = this;
+    while (needle !== null) {
+      if (needle.currentUrl === url) {
+        return null;
+      }
+      needle = needle.parent;
+    }
     const plan = new Plan(this, this.baseUrl, url);
     this.steps.push({
       type: 'Fork',
@@ -41,41 +55,41 @@ exports.Plan = class Plan {
       body: buffer
     });
   }
-  // written after writes are done for this Plan
-  defer() {
-    if (this._defer === null) {
-      this._defer = new Plan(this, this.baseUrl, this.currentUrl);
-    }
-    return this._defer.fork();
-  }
-  // written after *all* defers are done
-  async() {
-    if (this._async === null) {
-      this._async = new Plan(this, this.baseUrl, this.currentUrl);
-    }
-    return this._async.fork();
-  }
-  
   inspect() {
     return {
-      steps: this.steps.map(s => s.type === 'Write' ? s.body : s),
-      defer: this._defer,
-      async: this._async
+      steps: this.steps.map(s => s.type === 'Write' ? s.body : s)
     }
   }
   toString() {
-    let ret = '';
-    let tag = `${this.currentUrl}: `;
+    let ret = ``;
+    for (const step of this.linearize()) {
+      const url = step.url;
+      const lines = String(step.write).split(/\r?\n/g).join(`\r\n${url}:: `);
+      ret += `${url}:: ${lines}\r\n`;
+    }
+    return ret;
+  }
+  
+  *linearize() {
+    let wrote = false;
     for (const step of this.steps) {
       if (step.type === 'Write') {
-        ret += tag + step.body.toString().split(/\n/g).join(`\n${tag}`) + '\n';
+        if (step.body.length === 0) continue;
+        wrote = true;
+        yield {
+          url: this.currentUrl,
+          write: step.body
+        };
       }
       else if (step.type === 'Fork') {
-        ret += step.plan.toString();
+        yield* step.plan.linearize();
       }
     }
-    if (this._defer !== null) ret += this._defer.toString();
-    if (this._async !== null) ret += this._async.toString();
-    return ret;
+    if (!wrote) {
+      yield {
+        url: this.currentUrl,
+        write: new Buffer(0)
+      };
+    }
   }
 }

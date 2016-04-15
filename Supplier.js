@@ -7,7 +7,7 @@ exports.Supplier = class Supplier {
     this.dir = dir;
   }
   createReadStream(plan) {
-    const file = path.resolve(this.dir, path.join('./', plan.currentUrl));
+    const file = path.resolve(this.dir, path.join('.', plan.currentUrl));
     return fs.createReadStream(file);
   }
 }
