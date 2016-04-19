@@ -10,6 +10,8 @@ exports.Plan = class Plan {
     this.baseUrl = baseUrl;
     this.currentUrl = currentUrl;
     
+    this.handled = new Set();
+    this.handled.add(this.currentUrl);
     this.steps = [];
   }
   split() {
@@ -36,13 +38,14 @@ exports.Plan = class Plan {
       url = path.resolve(this.baseUrl, dir, newUrl);
     }
     let needle = this;
+    const plan = new Plan(this, this.baseUrl, url);
     while (needle !== null) {
-      if (needle.currentUrl === url) {
+      if (needle.handled.has(plan.currentUrl)) {
         return null;
       }
       needle = needle.parent;
     }
-    const plan = new Plan(this, this.baseUrl, url);
+    this.handled.add(plan.currentUrl);
     this.steps.push({
       type: 'Fork',
       plan: plan 
@@ -57,7 +60,9 @@ exports.Plan = class Plan {
   }
   inspect() {
     return {
-      steps: this.steps.map(s => s.type === 'Write' ? s.body : s)
+      planUrl: this.planUrl,
+      currentUrl: this.currentUrl,
+      steps: this.steps.map(s => s.type === 'Write' ? String(s.body) : s)
     }
   }
   toString() {

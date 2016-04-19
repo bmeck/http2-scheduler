@@ -79,13 +79,14 @@ module.exports = function planHTML(originalPlan, supplier) {
           writeUntil(location.endOffset);
           const url = validateUrl(plan, src);
           if (url !== null) {
-            scriptPlan = basePlan.fork(src);
-            //scriptPlan.write(`\n\nINTERLEAVE ${src}\n\n`);
-            const jsPlanner = planJS(scriptPlan, supplier);
-            const jsUnref = refs.ref();
-            jsPlanner.on('end', jsUnref);
-            jsPlanner.resume();
-            supplier.createReadStream(scriptPlan).pipe(jsPlanner);
+            scriptPlan = basePlan.fork(url);
+            if (scriptPlan) {
+              const jsPlanner = planJS(scriptPlan, supplier);
+              const jsUnref = refs.ref();
+              jsPlanner.on('end', jsUnref);
+              jsPlanner.resume();
+              supplier.createReadStream(scriptPlan).pipe(jsPlanner);
+            }
           }
         }
         else {
@@ -102,12 +103,13 @@ module.exports = function planHTML(originalPlan, supplier) {
         if (rel === 'stylesheet') {
           writeUntil(location.endOffset);
           const linkPlan = plan.fork(href);
-          //linkPlan.write(`\n\nINTERLEAVE ${href}\n\n`);
-          const cssPlanner = planCSS(linkPlan, supplier);
-          const cssUnref = refs.ref();
-          cssPlanner.on('end', cssUnref);
-          cssPlanner.resume();
-          supplier.createReadStream(linkPlan).pipe(cssPlanner);
+          if (linkPlan) {
+            const cssPlanner = planCSS(linkPlan, supplier);
+            const cssUnref = refs.ref();
+            cssPlanner.on('end', cssUnref);
+            cssPlanner.resume();
+            supplier.createReadStream(linkPlan).pipe(cssPlanner);
+          }
         }
       }
     });

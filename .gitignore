@@ -3,3 +3,7 @@ node_modules/
 *.log
 *.swp
 *.swo
+target
+Cargo.lock
+target
+Cargo.lock

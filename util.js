@@ -1,16 +1,23 @@
 'use strict';
 const url = require('url');
 exports.validateUrl = function (plan, src) {
-  if (src.slice(0,2) === '//') return null;
+  const base = plan.baseUrl;
   // not relative or absolute?
   if (/^(?:\/|\.\.?(?:\/|$))/.test(src) !== true) {
     const target = url.parse(src);
-    // skip remote calls
-    if (target.protocol) return null; 
+    // remove protocol
+    if (target.protocol) {
+      target.protocol = null;
+      return exports.validateUrl(plan, url.format(target));
+    }
     else return `./${src}`;
   }
+  // protocol relative
+  if (typeof base === 'string' && src.indexOf(`//${base}`) === 0) {
+    return `/${src.slice(2 + base.length)}`;
+  }
   // bare
-  return src;
+  return null;
 }
 // used to block an operation until it completes, and all child
 // operations complete

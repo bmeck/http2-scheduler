@@ -45,7 +45,6 @@ module.exports = function planCSS(plan, supplier) {
         writeUntil(evt.line, evt.col);
         const importPlan = plan.fork(url);
         if (importPlan === null) {
-          //circular
           return;
         }
         const cssPlanner = planCSS(importPlan, supplier);

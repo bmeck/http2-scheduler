@@ -3,7 +3,7 @@ Demo, dumping the interleaving schedule for a file.
 Note that empty buffers are dumped as newlines, this is not an exact dump.
 
 ```sh
-> node index.js test/fixture/single-script.html
+> node bin/plan.js test/fixture/single-script.html
 /single-script.html:: <script src=index.js>
 /index.js:: import './foo.js';
 /foo.js:: import './index.js';
@@ -27,6 +27,5 @@ Note that empty buffers are dumped as newlines, this is not an exact dump.
 TODO:
 
 * npm style package imports
-* allowing protocol relative links to work
 * better css interleaving by putting interleaving after `@import`
 

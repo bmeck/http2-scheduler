@@ -25,7 +25,6 @@ module.exports = function planJS(plan, supplier) {
       const url = items.strings[i];
       const importPlan = plan.fork(url);
       if (importPlan === null) {
-        //circular
         continue;
       }
       const jsPlanner = planJS(importPlan, supplier);
